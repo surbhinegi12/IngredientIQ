@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .models import ProductRequest, ProductAnalysis
+from .models import ProductRequest, ProductAnalysis, ClearCacheRequest
 from .analyzer import SkincareAnalyzer
+import os
 
 app = FastAPI(
     title="AI-Powered Skincare & Makeup Ingredient Analyzer",
@@ -45,8 +46,17 @@ async def analyze_product(request: ProductRequest):
 
 
 @app.post("/clear_cache/")
-async def clear_cache():
-    """Clear all cached data and start fresh."""
+async def clear_cache(request: ClearCacheRequest):
+    """Clear all cached data and start fresh. Requires admin password."""
+    # Get admin password from environment variable
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    
+    if not admin_password:
+        raise HTTPException(status_code=500, detail="Admin password not configured")
+    
+    if request.password != admin_password:
+        raise HTTPException(status_code=401, detail="Invalid password")
+    
     success = analyzer.clear_all_cache()
     if success:
         return {"message": "All cache cleared successfully!"}

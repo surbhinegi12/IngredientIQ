@@ -66,31 +66,52 @@ class IngredientScraper:
                 # Look for ingredients in multiple ways
                 ingredients = []
                 
-                # Method 1: Look for ingredient links
-                ingredient_links = soup.find_all('a', href=re.compile(r'/ingredients/'))
-                for link in ingredient_links:
-                    ingredient_name = link.get_text().strip()
-                    if len(ingredient_name) > 2 and ingredient_name not in ingredients:
-                        ingredients.append(ingredient_name)
-                
-                # Method 2: Look for ingredient lists
-                ingredient_lists = soup.find_all(['ul', 'ol'], class_=re.compile(r'ingredient', re.I))
-                for ul in ingredient_lists:
-                    items = ul.find_all('li')
-                    for item in items:
-                        ingredient_name = item.get_text().strip()
-                        if len(ingredient_name) > 2 and ingredient_name not in ingredients:
+                # Method 1: Look for structured ingredient lists (most reliable)
+                ingredient_containers = soup.find_all(['div', 'section'], class_=re.compile(r'ingredient|inci|formula', re.I))
+                for container in ingredient_containers:
+                    # Look for ingredient links within containers
+                    ingredient_links = container.find_all('a', href=re.compile(r'/ingredients/'))
+                    for link in ingredient_links:
+                        ingredient_name = self._clean_ingredient_name(link.get_text().strip())
+                        if self._is_valid_ingredient_name(ingredient_name) and ingredient_name not in ingredients:
                             ingredients.append(ingredient_name)
                 
-                # Method 3: Look for text containing ingredients
-                all_text = soup.get_text()
-                if 'water' in all_text.lower() or 'aqua' in all_text.lower():
-                    text_ingredients = self._parse_ingredient_text(all_text)
-                    ingredients.extend(text_ingredients)
+                # Method 2: Look for ingredient links globally if container method failed
+                if len(ingredients) < 3:
+                    ingredient_links = soup.find_all('a', href=re.compile(r'/ingredients/'))
+                    for link in ingredient_links:
+                        ingredient_name = self._clean_ingredient_name(link.get_text().strip())
+                        if self._is_valid_ingredient_name(ingredient_name) and ingredient_name not in ingredients:
+                            ingredients.append(ingredient_name)
+                
+                # Method 3: Look for structured lists (ul, ol)
+                if len(ingredients) < 3:
+                    ingredient_lists = soup.find_all(['ul', 'ol'])
+                    for ul in ingredient_lists:
+                        # Check if this list contains ingredients (look for chemical-sounding names)
+                        items = ul.find_all('li')
+                        if len(items) > 3:  # Likely an ingredient list
+                            for item in items:
+                                ingredient_name = self._clean_ingredient_name(item.get_text().strip())
+                                if self._is_valid_ingredient_name(ingredient_name) and ingredient_name not in ingredients:
+                                    ingredients.append(ingredient_name)
+                
+                # Method 4: Look for comma-separated ingredient text (last resort)
+                if len(ingredients) < 3:
+                    text_blocks = soup.find_all(['p', 'div'], string=re.compile(r'aqua|water.*,.*', re.I))
+                    for block in text_blocks:
+                        text = block.get_text().strip()
+                        if len(text) > 50 and ',' in text:  # Looks like ingredient list
+                            text_ingredients = self._parse_ingredient_text_improved(text)
+                            for ing in text_ingredients:
+                                if self._is_valid_ingredient_name(ing) and ing not in ingredients:
+                                    ingredients.append(ing)
                 
                 if len(ingredients) > 2:
                     print(f"Found {len(ingredients)} ingredients from product page")
-                    return list(set(ingredients))[:15]  # Remove duplicates
+                    return ingredients[:20]  # Return more ingredients but with better validation
+                else:
+                    print(f"Only found {len(ingredients)} ingredients, may need manual verification")
             
         except Exception as e:
             print(f"Product page extraction error: {e}")
@@ -121,6 +142,122 @@ class IngredientScraper:
                 filtered.append(ing)
         
         return filtered[:15]  # Limit to first 15 ingredients
+    
+    def _parse_ingredient_text_improved(self, text: str) -> List[str]:
+        """Enhanced ingredient parsing from text with better validation."""
+        if not text or len(text) < 20:
+            return []
+        
+        # Clean the text
+        text = re.sub(r'ingredients?:?\s*', '', text, flags=re.I)
+        text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+        
+        # Split on common delimiters
+        potential_ingredients = []
+        for delimiter in [',', ';', '\n']:
+            if delimiter in text:
+                potential_ingredients = [ing.strip() for ing in text.split(delimiter)]
+                break
+        
+        if not potential_ingredients:
+            return []
+        
+        # Advanced filtering
+        filtered = []
+        for ing in potential_ingredients:
+            cleaned = self._clean_ingredient_name(ing)
+            if self._is_valid_ingredient_name(cleaned):
+                filtered.append(cleaned)
+        
+        return filtered[:15]
+    
+    def _clean_ingredient_name(self, ingredient_name: str) -> str:
+        """Clean and normalize ingredient name."""
+        if not ingredient_name:
+            return ""
+        
+        # Remove extra whitespace and normalize
+        cleaned = re.sub(r'\s+', ' ', ingredient_name.strip())
+        
+        # Remove common prefixes/suffixes that aren't part of ingredient name
+        cleaned = re.sub(r'^(and\s+|or\s+|also\s+)', '', cleaned, flags=re.I)
+        cleaned = re.sub(r'(\s+and|\s+or)$', '', cleaned, flags=re.I)
+        
+        # Remove parenthetical explanations that are too long
+        if '(' in cleaned and ')' in cleaned:
+            paren_content = re.search(r'\(([^)]+)\)', cleaned)
+            if paren_content and len(paren_content.group(1)) > 30:
+                cleaned = re.sub(r'\([^)]+\)', '', cleaned).strip()
+        
+        return cleaned
+    
+    def _is_valid_ingredient_name(self, ingredient_name: str) -> bool:
+        """Check if a scraped ingredient name is actually a valid ingredient."""
+        if not ingredient_name or len(ingredient_name) < 3:
+            return False
+        
+        ingredient_lower = ingredient_name.lower().strip()
+        
+        # Reject if it's too long (likely a sentence)
+        if len(ingredient_name) > 70:
+            return False
+        
+        # Reject common non-ingredient phrases
+        invalid_phrases = [
+            'click here', 'read more', 'learn more', 'see full', 'view all',
+            'ingredients list', 'full ingredients', 'complete list', 'product details',
+            'how to use', 'directions', 'warnings', 'precautions', 'storage',
+            'made in', 'manufactured', 'distributed by', 'net weight', 'volume',
+            'expiry date', 'best before', 'use by', 'batch number', 'lot number'
+        ]
+        
+        for phrase in invalid_phrases:
+            if phrase in ingredient_lower:
+                return False
+        
+        # Reject if it contains too many common English words (likely a sentence)
+        common_words = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']
+        word_count = sum(1 for word in common_words if f' {word} ' in f' {ingredient_lower} ')
+        if word_count > 2:
+            return False
+        
+        # Must contain at least some letters
+        if not re.search(r'[a-zA-Z]', ingredient_name):
+            return False
+        
+        # Reject if it's mostly punctuation
+        alpha_count = sum(1 for c in ingredient_name if c.isalpha())
+        if alpha_count < len(ingredient_name) * 0.5:
+            return False
+        
+        # Accept if it looks like a chemical name (contains typical patterns)
+        chemical_patterns = [
+            r'[a-z]+yl\b',  # -yl endings
+            r'[a-z]+ate\b', # -ate endings
+            r'[a-z]+ine\b', # -ine endings
+            r'[a-z]+ol\b',  # -ol endings
+            r'acid\b',      # acids
+            r'sodium\b',    # sodium compounds
+            r'potassium\b', # potassium compounds
+            r'\b\d+\b',     # numbers (common in chemical names)
+        ]
+        
+        for pattern in chemical_patterns:
+            if re.search(pattern, ingredient_lower):
+                return True
+        
+        # Accept common cosmetic ingredient names
+        common_ingredients = [
+            'aqua', 'water', 'glycerin', 'dimethicone', 'cyclopentasiloxane',
+            'phenoxyethanol', 'tocopherol', 'retinol', 'niacinamide', 'ceramide'
+        ]
+        
+        for common in common_ingredients:
+            if common in ingredient_lower:
+                return True
+        
+        # If it passes basic checks and looks chemical-ish, accept it
+        return True
     
 
     

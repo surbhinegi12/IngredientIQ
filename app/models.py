@@ -21,3 +21,6 @@ class ProductAnalysis(BaseModel):
 
 class ProductRequest(BaseModel):
     product_name: str
+
+class ClearCacheRequest(BaseModel):
+    password: str
