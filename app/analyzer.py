@@ -1,5 +1,5 @@
 from typing import List, Dict
-from .database import ProductDatabase
+from .simple_database import SimpleProductDatabase
 from .scraper import IngredientScraper
 from .gemini_client import GeminiClient
 from .models import Ingredient, ProductAnalysis
@@ -7,18 +7,15 @@ import statistics
 
 class SkincareAnalyzer:
     def __init__(self):
-        self.product_db = ProductDatabase()
+        self.product_db = SimpleProductDatabase()
         self.scraper = IngredientScraper()
         self.gemini_client = GeminiClient()
     
     def clear_all_cache(self):
         """Clear all cached data and start fresh."""
         try:
-            # Delete all collections
-            self.product_db.client.delete_collection("products")
-            
-            # Recreate collections
-            self.product_db.collection = self.product_db.client.get_or_create_collection("products")
+            # Clear all products from simple database
+            self.product_db.clear_all_products()
             
             print("✅ All cache cleared successfully!")
             return True

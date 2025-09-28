@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from .models import ProductRequest, ProductAnalysis, ClearCacheRequest
 from .analyzer import SkincareAnalyzer
 import os
@@ -22,7 +23,8 @@ analyzer = SkincareAnalyzer()
 
 @app.get("/")
 async def root():
-    return {"message": "AI-Powered Skincare & Makeup Ingredient Analyzer API"}
+    """Redirect to API documentation"""
+    return RedirectResponse(url="/docs")
 
 @app.post("/analyze_product/", response_model=ProductAnalysis)
 async def analyze_product(request: ProductRequest):

@@ -13,16 +13,14 @@ An AI-powered web application that analyzes skincare and makeup products for ing
 ## Tech Stack
 
 - **Backend**: FastAPI
-- **Database**: ChromaDB for vector storage
 - **AI**: Google Gemini for ingredient analysis and natural language generation
-- **NLP**: Sentence-Transformers for semantic search
 - **Web Scraping**: BeautifulSoup for ingredient data extraction
 
 ## API Endpoints
 
 ### POST /analyze_product/
 
-Analyze a skincare or makeup product for ingredient safety.(The lower the safety score, the better)
+Analyze a skincare or makeup product for ingredient safety.(lower safety score, means lower risk ingredients/product)
 
 **Request Body:**
 
