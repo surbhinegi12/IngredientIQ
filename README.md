@@ -58,3 +58,7 @@ Analyze a skincare or makeup product for ingredient safety.(lower safety score, 
   ]
 }
 ```
+
+### Try the Live API
+
+Visit the deployed application at [https://ingredient-iq-alpha.vercel.app](https://ingredient-iq-alpha.vercel.app) to access the endpoints directly.
